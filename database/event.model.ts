@@ -26,7 +26,7 @@ const EventSchema = new Schema<IEvent>(
       type: String,
       required: [true, 'Title is required'],
       trim: true,
-      
+      maxLength: [100, 'Title cannot exceed 100 characters'],
     },
     slug: {
       type: String,
@@ -105,16 +105,37 @@ const EventSchema = new Schema<IEvent>(
 );
 
 // Pre-save hook: Generate slug, normalize date and time
-EventSchema.pre('save', function (next) {
+EventSchema.pre('save', async function (next) {
   // Generate slug from title only if title is modified or document is new
   if (this.isModified('title')) {
-    this.slug = this.title
+    const baseSlug = this.title
       .toLowerCase()
       .trim()
       .replace(/[^\w\s-]/g, '') // Remove special characters
       .replace(/\s+/g, '-') // Replace spaces with hyphens
       .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
       .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+
+    // Handle slug collisions by appending numeric suffix
+    let slug = baseSlug;
+    let counter = 1;
+    
+    // Check if slug exists (excluding current document if updating)
+    while (true) {
+      const existingEvent = await (this.constructor as any).findOne({
+        slug,
+        _id: { $ne: this._id }, // Exclude current document
+      });
+      
+      if (!existingEvent) {
+        this.slug = slug;
+        break;
+      }
+      
+      // Append counter to create unique slug
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
   }
 
   // Normalize date to ISO format if modified
